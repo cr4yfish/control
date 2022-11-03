@@ -1,9 +1,141 @@
 import type { NextPage } from 'next'
 import Head from 'next/head'
-import Image from 'next/image'
 import styles from '../styles/Home.module.css'
+import { Text, Container, Input, Button, Spacer, Loading, User, Card, Navbar, Checkbox }from "@nextui-org/react";
+import { useState, useEffect } from 'react';
+
+// home assistant stuff
+import { getAuth, createConnection, subscribeEntities, ERR_HASS_HOST_REQUIRED, ERR_INVALID_AUTH, callService, getUser } from "home-assistant-js-websocket";
+
+// Interfaces
+import { ControlUser } from '../interfaces/ControlUser';
 
 const Home: NextPage = () => {
+  const [endpoint, setEndpoint] = useState("");
+  const [data, setData] = useState();
+  const [loading, setLoading] = useState(false);
+  const [entities, setEntities] = useState([]);
+  const [persons, setPersons] = useState([]);
+  const [hassUrl, setHassUrl] = useState("");
+  const [lights, setLights] = useState([]);
+  const [connection, setConnection] = useState();
+  const [user, setUser] = useState(new ControlUser());
+  const [showAll, setShowAll] = useState(false);
+
+  useEffect(() => {
+    setPersons([]);
+    setLights([]);
+    
+    // set people
+    Object.keys(entities).filter((entity) => entity.startsWith("person.")).map((entity) => {
+      setPersons((persons) => [...persons, entities[entity]]);
+    });
+
+    // set lights
+    Object.keys(entities).filter((entity) => { 
+      const name = showAll ? "" : user.name[0].toLowerCase();
+      return entity.startsWith(`light.${name}`)
+    }).map((entity) => {
+      setLights((lights) => [...lights, entities[entity]]);
+    });
+
+  }, [entities])
+
+  /**
+   * Send Handler
+   * Function that sends the endpoint to api/hatest/{endpoint}
+   */
+  const sendHandler = () => {
+    setLoading(true);
+    fetch(`/api/hatest?endpoint=${endpoint}`)
+      .then((res) => res.json())
+      .then((data) => {
+        console.log("Data", data)
+        setData(data);
+        setLoading(false);
+      });
+  };
+
+  async function connect() {
+    console.log("Trying to connect");
+    let auth;
+    try {
+      // Try to pick up authentication after user logs in
+      auth = await getAuth();
+    } catch (err) {
+      console.log("Could not auto-login");
+      if (err === ERR_HASS_HOST_REQUIRED) {
+        const hassUrl = prompt (
+          "What host to connect to?",
+          "http://homeassistant.local:8123"
+        );
+        setHassUrl(hassUrl);
+        console.log("Hass URL", hassUrl);
+        // Redirect user to log in on their instance
+        auth = await getAuth({ hassUrl });
+      } else if(err === ERR_INVALID_AUTH) {
+        console.log("Invalid auth", auth?.accessToken, auth?.expired);
+        alert(`Invalid access Token! Current token: ${auth?.accessToken} Expired: ${auth?.expired}`);
+        // refresh auth token
+        auth?.refreshAccessToken();
+        return;
+      } else {
+        alert(`Unknown error: ${err}`);
+        return;
+      }
+    }
+
+    const connection = await createConnection({ auth });
+    setConnection(connection);
+    getUser(connection).then((user) => {
+      setUser(user);
+      console.log("User", user);
+    })
+    
+    for (const ev of ["disconnected", "ready", "reconnect-error"]) {
+      connection.addEventListener(ev, () => console.log(`Event: ${ev}`));
+    }
+    console.log("Connected to HA. Version:", connection.haVersion);
+    subscribeEntities(connection, (ent) => setEntities(ent));
+  }
+
+  const RenderPersons = ({ people }) => {
+    return people.map((person) => {
+      return (
+        <User
+          key={person.entity_id}
+          src={"http://homeassistant.local:8123" + person.attributes.entity_picture}
+          name={person.attributes.friendly_name}
+          subtitle={person.attributes.id}
+        />
+      )
+    })
+  }
+
+  const RenderLights = ({ ents }) => {
+    return ents.map((light) => {
+      return light.state !== "unavailable" ?  (
+        <Card
+        key={light.entity_id}
+        isPressable
+        isHoverable
+        onPress={() => {
+          callService(connection, "homeassistant", "toggle", {
+            entity_id: light.entity_id,
+          })
+        }}
+        >
+          <Card.Body>
+            <Text h3>{light.attributes.friendly_name}</Text>
+            <Text >Tap to toggle</Text>
+            <Text p>{light.entity_id}</Text>
+            <Text>{light.state}</Text>
+          </Card.Body>
+        </Card>
+      ) : null;
+    })
+  }
+
   return (
     <div className={styles.container}>
       <Head>
@@ -12,59 +144,41 @@ const Home: NextPage = () => {
         <link rel="icon" href="/favicon.ico" />
       </Head>
 
-      <main className={styles.main}>
-        <h1 className={styles.title}>
-          Welcome to <a href="https://nextjs.org">Next.js!</a>
-        </h1>
+      <Navbar isBordered variant={"floating"}>
+        <Navbar.Brand>
+          <Navbar.Toggle />
+          <Spacer x={0.5} />
+          <Text h2>Control {hassUrl}</Text>
+        </Navbar.Brand>
+        <Navbar.Content>
+          {persons.map((person) => {
+            
+            return person.attributes.friendly_name === user.name ? (
+            <Navbar.Link key={person.attributes.friendly_name}>
+              <User
+              key={person.entity_id}
+              src={"http://homeassistant.local:8123" + person.attributes.entity_picture}
+              name={person.attributes.friendly_name}
+            />
+            </Navbar.Link>
+            ) : null })
+          }
+        </Navbar.Content>
+        <Navbar.Collapse>
+          <Spacer y={0.5} />
+          <Button color={"secondary"} ghost onClick={() => connect()}>Connect to Home Assistant</Button>
+          <Spacer y={0.5} />
+          <Checkbox defaultSelected={showAll} onChange={() => setShowAll(!showAll)}>Show All</Checkbox>
+        </Navbar.Collapse>
+      </Navbar>
 
-        <p className={styles.description}>
-          Get started by editing{' '}
-          <code className={styles.code}>pages/index.tsx</code>
-        </p>
-
-        <div className={styles.grid}>
-          <a href="https://nextjs.org/docs" className={styles.card}>
-            <h2>Documentation &rarr;</h2>
-            <p>Find in-depth information about Next.js features and API.</p>
-          </a>
-
-          <a href="https://nextjs.org/learn" className={styles.card}>
-            <h2>Learn &rarr;</h2>
-            <p>Learn about Next.js in an interactive course with quizzes!</p>
-          </a>
-
-          <a
-            href="https://github.com/vercel/next.js/tree/canary/examples"
-            className={styles.card}
-          >
-            <h2>Examples &rarr;</h2>
-            <p>Discover and deploy boilerplate example Next.js projects.</p>
-          </a>
-
-          <a
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=default-template&utm_campaign=create-next-app"
-            className={styles.card}
-          >
-            <h2>Deploy &rarr;</h2>
-            <p>
-              Instantly deploy your Next.js site to a public URL with Vercel.
-            </p>
-          </a>
-        </div>
-      </main>
-
-      <footer className={styles.footer}>
-        <a
-          href="https://vercel.com?utm_source=create-next-app&utm_medium=default-template&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          Powered by{' '}
-          <span className={styles.logo}>
-            <Image src="/vercel.svg" alt="Vercel Logo" width={72} height={16} />
-          </span>
-        </a>
-      </footer>
+      <Container>
+       <Spacer />
+        <Container style={{display: "flex", gap: "1rem"}}>
+          <RenderLights ents={lights} />
+          <Spacer />
+        </Container>
+      </Container>
     </div>
   )
 }
