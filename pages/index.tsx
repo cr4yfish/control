@@ -1,4 +1,5 @@
 import type { NextPage } from 'next'
+import Link from "next/link";
 import Head from 'next/head'
 import styles from '../styles/Home.module.css'
 import { Text, Container, Input, Button, Spacer, Loading, User, Card, Navbar, Checkbox }from "@nextui-org/react";
@@ -9,6 +10,11 @@ import { getAuth, createConnection, subscribeEntities, ERR_HASS_HOST_REQUIRED, E
 
 // Interfaces
 import { ControlUser } from '../interfaces/ControlUser';
+
+// Components
+import NavbarCustom from '../components/NavbarCustom';
+import Entity from '../components/Entity';
+import NoSsr from '../components/NoSsr';
 
 const Home: NextPage = () => {
   const [endpoint, setEndpoint] = useState("");
@@ -25,6 +31,8 @@ const Home: NextPage = () => {
   useEffect(() => {
     setPersons([]);
     setLights([]);
+
+    console.log(entities);
     
     // set people
     Object.keys(entities).filter((entity) => entity.startsWith("person.")).map((entity) => {
@@ -115,23 +123,8 @@ const Home: NextPage = () => {
   const RenderLights = ({ ents }) => {
     return ents.map((light) => {
       return light.state !== "unavailable" ?  (
-        <Card
-        key={light.entity_id}
-        isPressable
-        isHoverable
-        onPress={() => {
-          callService(connection, "homeassistant", "toggle", {
-            entity_id: light.entity_id,
-          })
-        }}
-        >
-          <Card.Body>
-            <Text h3>{light.attributes.friendly_name}</Text>
-            <Text >Tap to toggle</Text>
-            <Text p>{light.entity_id}</Text>
-            <Text>{light.state}</Text>
-          </Card.Body>
-        </Card>
+        <Entity light={light}
+         callService={callService} connection={connection} />
       ) : null;
     })
   }
@@ -144,38 +137,20 @@ const Home: NextPage = () => {
         <link rel="icon" href="/favicon.ico" />
       </Head>
 
-      <Navbar isBordered variant={"floating"}>
-        <Navbar.Brand>
-          <Navbar.Toggle />
-          <Spacer x={0.5} />
-          <Text h2>Control {hassUrl}</Text>
-        </Navbar.Brand>
-        <Navbar.Content>
-          {persons.map((person) => {
-            
-            return person.attributes.friendly_name === user.name ? (
-            <Navbar.Link key={person.attributes.friendly_name}>
-              <User
-              key={person.entity_id}
-              src={"http://homeassistant.local:8123" + person.attributes.entity_picture}
-              name={person.attributes.friendly_name}
-            />
-            </Navbar.Link>
-            ) : null })
-          }
-        </Navbar.Content>
-        <Navbar.Collapse>
-          <Spacer y={0.5} />
-          <Button color={"secondary"} ghost onClick={() => connect()}>Connect to Home Assistant</Button>
-          <Spacer y={0.5} />
-          <Checkbox defaultSelected={showAll} onChange={() => setShowAll(!showAll)}>Show All</Checkbox>
-        </Navbar.Collapse>
-      </Navbar>
+      <NavbarCustom persons={persons} user={user} />
+
+      <Spacer y={7} />
+      <Button color={"secondary"} ghost onClick={() => connect()}>Connect to Home Assistant</Button>
+      <Spacer y={0.5} />
+      <Checkbox defaultSelected={showAll} onChange={() => setShowAll(!showAll)}>Show All</Checkbox>
 
       <Container>
        <Spacer />
         <Container style={{display: "flex", gap: "1rem"}}>
-          <RenderLights ents={lights} />
+
+            <RenderLights ents={lights} />
+            <Entity light={{state:"on", entity_id:"light.bedroom", attributes: { friendly_name:"Bedroom" }}}
+              callService={callService} connection={connection} />
           <Spacer />
         </Container>
       </Container>

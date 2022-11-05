@@ -1,0 +1,31 @@
+.navbar {
+    display: flex;
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+    padding: 2rem 3rem;
+    width: 100%;
+    position: fixed;
+    top: 0;
+    left: 0;
+    background-color: transparent;
+    backdrop-filter: blur(20px);
+    z-index: 999999;
+    color: #fff;
+    transition: all .5s;
+}
+
+.navbarExpanded {
+    background-color: #4e4e4e14;
+    min-height: 33vh;
+}
+
+.icon {
+    font-size: 2rem;
+    cursor: pointer;
+    transition: all .15s ease-in-out;
+}
+
+.icon:active{
+    color: #ccc;
+}
